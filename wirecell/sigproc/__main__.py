@@ -103,21 +103,33 @@ def fr2npz(gain, shaping, json_file, npz_file):
               help="The FR to use in case a detector has multiple (default=0)")
 @click.option("--uniform", default=None, type=int,
               help="Set to a number to set all imps that imp (default=None)")
-@click.option("-o", "--output",
-              default="/dev/stdout",
+@click.option("-o", "--output", default="/dev/stdout",
               help="Output WCT file (.json or .json.bz2, def: stdout)")
+@click.option("--nimperwire", default=6,
+              help="Number of impulse positions per wire region (default=6)")
 @click.argument("fields")
 @click.pass_context
-def frzero(ctx, number, index, uniform, output, fields):
+def frzero(ctx, number, index, uniform, output, nimperwire, fields):
     '''
     Emit FR with wire regions zeroed.
 
+    The "fields" is a canonical detector name or a FR file.
+
     Remaining non-zero may optionally be made uniform.
 
-    Note, the number for --uniform=N is order dependent and usually 0 at the
-    wire region boundary and 5 at the center of the region.
+    Notes
 
-    The "fields" is a canonical detector name or a FR file.
+    - The number for --uniform=N is order dependent and usually 0 at the
+      wire region boundary and 5 at the center of the region.
+
+    - Wires are counted starting at the most-negative pitch and with a
+      negative starting wire index count (typically -10).  This makes
+      wire 0 the central wire.
+
+    - Relative impact positions are counted starting at 0 from the
+      most-negative pitch which would be at the start of a wire region.
+      The impact position coincident with the wire is numbered
+      nimperwire-1 (ie, typically 5).
     '''
     import wirecell.sigproc.response.persist as per
 
@@ -127,33 +139,39 @@ def frzero(ctx, number, index, uniform, output, fields):
 
     for pr in fr.planes:
 
-        # lookup from wire number to its imps
-        w2i = defaultdict(list)
-        if uniform is not None:
-            for path in pr.paths:
-                wire = int(path.pitchpos / pr.pitch)
-                w2i[wire].append(path)
+        nimps = len(pr.paths)        # 126
+        nwires = nimps // nimperwire  # 21 = 126 / 6
+        nhalf = (nwires-1)//2         # 10
+        impinds = numpy.arange(0, nimps).reshape(nwires, nimperwire)
+
+        def path_wire(path):
+            if path.pitchpos > 0.0:
+                return 1 + int((path.pitchpos-0.001) / pr.pitch)
+            return int(path.pitchpos / pr.pitch)
+
+        def path_ind(path):
+            return path_wire(path) + nhalf
 
         for path in pr.paths:
             assert isinstance(path.current, numpy.ndarray)
 
-            wire = int(path.pitchpos / pr.pitch)
+            wire = path_wire(path)
 
-            if abs(wire) <= number:
-                if uniform is  None:
-                    log.debug(f'keep plane {pr.planeid} wire: {wire}, '
-                              f'pitch = {path.pitchpos} / {pr.pitch}')
-                    continue
-
-                pu = w2i[wire][uniform]
-                path.current = pu.current
+            if abs(wire) > number:
+                path.current = numpy.zeros_like(path.current)
+                continue
+            
+            if uniform is None:
                 log.debug(f'keep plane {pr.planeid} wire: {wire}, '
-                          f'pitch = {path.pitchpos} / {pr.pitch} '
-                          f'with path at {pu.pitchpos}')
+                          f'pitch = {path.pitchpos} / {pr.pitch}')
                 continue
 
-            path.current = numpy.zeros_like(path.current)
-
+            pind = path_ind(path)
+            pu = pr.paths[impinds[pind, uniform]]
+            path.current = pu.current
+            log.debug(f'keep plane {pr.planeid} wire: {wire}, '
+                      f'pitch = {path.pitchpos} / {pr.pitch} '
+                      f'with path at {pu.pitchpos}')
     per.dump(output, fr)
 
 
@@ -174,6 +192,7 @@ def response_info(ctx, json_file):
         for pr in fr.planes:
             log.info ("\tplane:%d, location:%.4fmm, pitch:%.4fmm" % \
                    (pr.planeid, pr.location/units.mm, pr.pitch/units.mm))
+
 
 @cli.command("convert-garfield")
 @click.option("-o", "--origin", default="10.0*cm",
