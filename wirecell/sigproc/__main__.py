@@ -410,19 +410,25 @@ def plot_response_compare_waveforms(ctx, plane, irange, trange,
               help="An initial distinguishing title")
 @click.option("--reflect/--no-reflect", default=True,
               help="Apply symmetry reflection")
+@click.option("--planes", default="0,1,2",
+              help="If given, a comma separated list of plane numbers")
 @click.argument("responsefile")
 @click.argument("outfile")
 @click.pass_context
-def plot_response(ctx, responsefile, outfile, region, trange, title, reflect):
+def plot_response(ctx, responsefile, outfile, region, trange, title, reflect, planes):
     '''
     Plot per plane responses.
     '''
     import wirecell.sigproc.response.persist as per
     import wirecell.sigproc.response.plots as plots
 
+    planes = list(map(int, planes.split(",")))
+
     trange = list(map(int, trange.split(',')))
     fr = per.load(responsefile)
-    plots.plot_planes(fr, outfile, trange, region, reflect, title)
+    if isinstance(fr, list):
+        fr = fr[0]
+    plots.plot_planes(fr, outfile, trange, region, reflect, title, planes=planes)
 
 
 @cli.command("plot-response-conductors")

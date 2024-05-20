@@ -343,13 +343,19 @@ def digitzer(output, jsiofile, **kwds):
               help="limit time range, eg '0,3*us'")
 @click.option("-y", "--yrange", default=None, type=str,
               help="limit y-axis range in raw numbers, default is auto range")
+@click.option("--yscale", default="lin", type=click.Choice(["log","lin"]),
+              help="The Y-axis scale.")
+@click.option("--baseline", default=None, type=float,
+              help="Baseline to subtract or default to only suppress zero freq bin.")
 @click.option("-f", "--frange", default=None, type=str,
               help="limit frequency range, eg '0,100*kHz'")
 @click.option("--drawstyle", default="steps-mid", type=str,
               help="draw style to use")
+@click.option("--legends", default=None, type=str,
+              help="A ;-delimited list of legend titles to use if not the file names")
 @image_output
 @click.argument("frame_files", nargs=-1)
-def channels(output, channel, trange, frange, yrange, drawstyle, frame_files, **kwds):
+def channels(output, channel, trange, frange, yrange, yscale, baseline, drawstyle, frame_files, legends, **kwds):
     '''
     Plot channels from multiple frame files.
 
@@ -366,6 +372,8 @@ def channels(output, channel, trange, frange, yrange, drawstyle, frame_files, **
         frange = unitify_parse(frange)
     if yrange:
         yrange = unitify_parse(yrange)
+    if legends is not None:
+        legends = legends.split(";");
 
     channels = list()
     for chan in channel:
@@ -391,7 +399,7 @@ def channels(output, channel, trange, frange, yrange, drawstyle, frame_files, **
 
         for chan in channels:
 
-            fig,axes = plt.subplots(nrows=1, ncols=2)
+            fig,axes = plt.subplots(nrows=1, ncols=2, figsize=(8,3))
             fig.suptitle(f'channel {chan}')
 
             for ind, (fname, frs) in enumerate(frames.items()):
@@ -404,6 +412,8 @@ def channels(output, channel, trange, frange, yrange, drawstyle, frame_files, **
                 for fr in frs:
 
                     wave = fr.waves(chan)
+                    if baseline:
+                        wave = wave - baseline
                     axes[0].set_title("waveforms")
                     axes[0].plot(fr.times/units.us, wave, linewidth=linewidth, drawstyle=drawstyle)
                     if trange:
@@ -415,23 +425,33 @@ def channels(output, channel, trange, frange, yrange, drawstyle, frame_files, **
                                            (trange[0]/units.us, trange[1]/units.us))
                     axes[0].set_xlabel("time [us]")
                         
+                    if legends:
+                        label = legends[ind]
+                    else:
+                        label = f'{fr.nticks}x{fr.period/units.ns:.0f}ns\n{stem}'
 
+                    spec = numpy.abs(numpy.fft.fft(wave))
+                    if baseline is None:
+                        spec[0] = 0
                     axes[1].set_title("spectra")
-                    axes[1].plot(fr.freqs_MHz, numpy.abs(numpy.fft.fft(wave)), linewidth=linewidth,
-                                 label=f'{fr.nticks}x{fr.period/units.ns:.0f}ns\n{stem}')
-                    axes[1].set_yscale('log')
+                    axes[1].plot(fr.freqs_MHz, spec, linewidth=linewidth,
+                                 label=label)
+                    if yscale.startswith("log"):
+                        axes[1].set_yscale('log')
                     if frange:
                         axes[1].set_xlim(frange[0]/units.MHz, frange[1]/units.MHz)
                     else:
                         axes[1].set_xlim(0, fr.freqs_MHz[fr.nticks//2])
                     axes[1].set_xlabel("frequency [MHz]")
-                    axes[1].legend(loc='upper right')
+                    axes[1].legend(loc='center right')
 
 
             if not out.single:
+                plt.tight_layout()
                 out.savefig()
                 plt.clf()
         if out.single:
+            plt.tight_layout()
             out.savefig()
 
 
@@ -487,7 +507,7 @@ def channels_shift(output, channel, trange, frange, yrange, frame_files, **kwds)
 
             sigs = list()
             for ind, (fname, frs) in enumerate(frames.items()):
-                stem = Path(fname).stem
+                # stem = Path(fname).stem
                 # linewidth = len(frames) - ind
                 linewidth = 1
 

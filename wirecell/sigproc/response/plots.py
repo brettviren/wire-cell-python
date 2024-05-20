@@ -244,36 +244,32 @@ def plot_conductors(fr, filename=None, trange=(0,100),
         fig.savefig(filename)
     
 
-def plot_planes(fr, filename=None, trange=(0,70), region=None, reflect=True, pretitle=""):
+def plot_planes(fr, filename=None, trange=(0,70), region=None, reflect=True, pretitle="", planes=[0,1,2]):
     '''
     Plot field response as time vs impact positions.
 
     >>> import wirecell.sigproc.response.persist as per
-    >>> fr = per.load("garfield-1d-3planes-21wires-6impacts.json.bz2")
+    >>> fr = per.load("garfield-1d-3planes-21wires-6impacts.json.biz2")
     >>> plot_planes(fr)
 
     '''
 
-    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8.0, 10.5))
-
+    nplanes = len(planes)
+    fig, axes = plt.subplots(nplanes, 1, sharex=True, figsize=(8.0, 3.5*nplanes))
+    if nplanes == 1:
+        axes = [axes]
     fig.subplots_adjust(left=0.1, right=1.0, top=0.95, bottom=0.05)
 
     # vlims = [0.1, 0.1, 0.1] # linear style
     vlims = [3, 3, 3] # "log10" style
 
-    for planeid in range(3):
+    for panel, planeid in enumerate(planes):
         vlim = vlims[planeid]
         t, p, c = get_plane(fr, planeid, reflect=reflect)
         ax = axes[planeid]
-        # ax.axis([65, 90, -20, 20])
 
         imps = numpy.unique(numpy.sort(p.reshape(p.size)))
-        
-        # pr = fr.planes[planeid]
-        # pitches = [path.pitchpos for path in pr.paths]
-        # pitches.sort()
-        # dpitch = pitches[1]-pitches[0]
-        # pmax = max(map(abs, pitches))
+
         ax.set_xlim(*trange)
         ax.set_title(f'{pretitle} Induced Current ["signed log"] %s-plane' % 'UVW'[planeid])
         ax.set_ylabel('Pitch [mm]')
@@ -292,20 +288,15 @@ def plot_planes(fr, filename=None, trange=(0,70), region=None, reflect=True, pre
             ax.plot((trange[0],trange[1]), (      0,       0), color='white', linewidth=0.05, linestyle='--')
             ax.plot((trange[0],trange[1]), (-region, -region), color='white', linewidth=0.05)
 
-        # for iwire in range(10):
-        #     ax.axhline(-iwire*3*units.mm, linewidth=1, color='black')
-        #     ax.axhline(+iwire*3*units.mm, linewidth=1, color='black')
-        #     ax.axhline(-(iwire+0.5)*3*units.mm, linewidth=1, color='gray',
-        #                linestyle='dashed')
-        #     ax.axhline(+(iwire+0.5)*3*units.mm, linewidth=1, color='gray',
-        #                linestyle='dashed')
-
     if filename:
         print ("Saving to %s" % filename)
         if filename.endswith(".pdf"):
             print ("warning: saving to PDF takes an awfully long time.  Try PNG.")
 
-        fig.savefig(filename,dpi=300) # 
+        fig.savefig(filename,dpi=300, bbox_inches='tight') # 
+
+    return fig,axes
+
 
 def plot_specs(fr, filename=None):
     '''
